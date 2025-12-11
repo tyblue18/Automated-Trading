@@ -1,0 +1,147 @@
+# 2-AMP Configuration File
+# All configurable parameters for the trading sentiment analysis system
+
+# Data Collection Settings
+data:
+  output_dir: "data"
+  
+  # SEC EDGAR Settings
+  edgar:
+    tickers:
+      NVDA: "0001045810"
+      AMD: "0000002488"
+      TSM: "0001046179"
+    
+    filing_types: ["8-K", "10-Q", "10-K", "6-K"]
+    start_date: "2008-01-01"
+    end_date: "2018-12-31"
+    max_docs_per_ticker: 500
+    
+    # Price data window (padded around filing dates)
+    price_start: "2007-12-01"
+    price_end: "2019-01-31"
+    
+    # Return calculation horizons (days)
+    return_horizons: [3, 5]
+    
+    # Search-index chunking
+    chunk_years: 3
+    search_pages: 10
+    search_size: 200
+    
+    # HTTP settings
+    user_agent: "stock-news-llm/0.1 (contact: you@example.com)"
+    max_retries: 4
+    retry_sleep_base: 0.7
+    request_timeout: 30
+  
+  # GDELT Settings
+  gdelt:
+    start_date: "2010-01-01"
+    end_date: "2016-12-31"
+    price_start: "2009-12-01"
+    price_end: "2017-01-31"
+    
+    # Company aliases for queries
+    company_aliases:
+      NVDA:
+        - "NVIDIA"
+        - "NVDA"
+        - "GeForce"
+        - "CUDA"
+        - "H100"
+        - "A100"
+        - "GPU"
+        - "graphics card"
+        - "graphics processor"
+        - "Jensen Huang"
+        - "Kepler"
+        - "Maxwell"
+        - "Pascal"
+        - "Volta"
+        - "Tegra"
+      AMD:
+        - "AMD"
+        - "Advanced Micro Devices"
+        - "Ryzen"
+        - "EPYC"
+        - "Radeon"
+        - "GPU"
+        - "CPU"
+        - "graphics card"
+        - "Lisa Su"
+        - "Bulldozer"
+      TSM:
+        - "TSMC"
+        - "Taiwan Semiconductor"
+        - "TSM"
+        - "semiconductor"
+        - "chip fabrication"
+        - "foundry"
+        - "wafer"
+        - "node"
+        - "28nm"
+        - "14nm"
+        - "7nm"
+    
+    sector_terms:
+      - "semiconductor"
+      - "chip"
+      - "GPU"
+      - "foundry"
+      - "graphics"
+      - "datacenter"
+      - "AI chip"
+      - "machine learning"
+    
+    max_records: 250
+    sleep_sec: 1.0
+    retries: 4
+    timeout: 30
+  
+  # RSS Feed Settings
+  rss:
+    feeds:
+      - "https://www.forbes.com/investing/feed/"
+      - "https://www.forbes.com/innovation/feed/"
+      - "https://www.forbes.com/money/feed/"
+      - "https://www.forbes.com/business/feed/"
+    
+    check_interval_seconds: 600  # 10 minutes
+    target_companies: ["nvidia"]  # Case-insensitive
+
+# Sentiment Analysis Settings
+sentiment:
+  # Model settings
+  finbert_model: "yiyanghkust/finbert-tone"
+  max_length: 512
+  
+  # Batch processing
+  batch_size: 8
+  
+  # VADER thresholds
+  vader_positive_threshold: 0.05
+  vader_negative_threshold: -0.05
+  
+  # TF-IDF model path (relative to src/)
+  tfidf_model_path: "tfidf_lr_model.pkl"
+
+# Logging Settings
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: null  # Set to a path to log to file, null for console only
+
+# Performance Settings
+performance:
+  # Enable model caching (recommended: true)
+  cache_models: true
+  
+  # Enable batch processing (recommended: true for multiple texts)
+  use_batch_processing: true
+  
+  # Rate limiting delays (seconds)
+  edgar_text_fetch_delay: 0.5
+  edgar_chunk_delay: 0.2
+  gdelt_query_delay: 1.0
+

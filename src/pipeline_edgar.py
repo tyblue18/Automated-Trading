@@ -8,6 +8,7 @@ import pandas as pd
 import yfinance as yf
 from bs4 import BeautifulSoup
 from typing import List, Optional, Tuple
+import logging
 
 # ========= Config =========
 OUT_DIR = "data"; os.makedirs(OUT_DIR, exist_ok=True)
@@ -44,28 +45,83 @@ SEARCH_PAGES = 10    # pages per chunk per query (each page returns up to 'size'
 SEARCH_SIZE  = 200   # rows per page
 
 # ========= HTTP helpers =========
+logger = logging.getLogger(__name__)
+
 def _get_json(url: str, method: str = "GET", payload: Optional[dict] = None,
-              max_retries: int = 4, sleep_base: float = 0.7):
+              max_retries: int = 4, sleep_base: float = 0.7, timeout: int = 30):
+    """
+    Fetch JSON data from URL with exponential backoff retry logic.
+    
+    Args:
+        url: URL to fetch
+        method: HTTP method ("GET" or "POST")
+        payload: JSON payload for POST requests
+        max_retries: Maximum number of retry attempts
+        sleep_base: Base sleep time for exponential backoff
+        timeout: Request timeout in seconds
+    
+    Returns:
+        JSON data as dict, or None if all retries failed
+    """
     for i in range(max_retries):
         try:
-            r = requests.post(url, headers=UA, json=payload, timeout=30) if method == "POST" \
-                else requests.get(url, headers=UA, timeout=30)
+            if method == "POST":
+                r = requests.post(url, headers=UA, json=payload, timeout=timeout)
+            else:
+                r = requests.get(url, headers=UA, timeout=timeout)
+            
             if r.ok:
                 return r.json()
-        except Exception:
-            pass
-        time.sleep(sleep_base * (2 ** i))
+            else:
+                logger.warning(f"HTTP {r.status_code} for {url} (attempt {i+1}/{max_retries})")
+        except requests.exceptions.Timeout:
+            logger.warning(f"Timeout for {url} (attempt {i+1}/{max_retries})")
+        except requests.exceptions.RequestException as e:
+            logger.warning(f"Request error for {url}: {e} (attempt {i+1}/{max_retries})")
+        except Exception as e:
+            logger.error(f"Unexpected error fetching {url}: {e} (attempt {i+1}/{max_retries})")
+        
+        if i < max_retries - 1:  # Don't sleep after last attempt
+            sleep_time = sleep_base * (2 ** i)
+            logger.debug(f"Retrying in {sleep_time:.2f} seconds...")
+            time.sleep(sleep_time)
+    
+    logger.error(f"Failed to fetch {url} after {max_retries} attempts")
     return None
 
-def _get_html(url: str, max_retries: int = 4, sleep_base: float = 0.7) -> Optional[str]:
+def _get_html(url: str, max_retries: int = 4, sleep_base: float = 0.7, timeout: int = 30) -> Optional[str]:
+    """
+    Fetch HTML content from URL with exponential backoff retry logic.
+    
+    Args:
+        url: URL to fetch
+        max_retries: Maximum number of retry attempts
+        sleep_base: Base sleep time for exponential backoff
+        timeout: Request timeout in seconds
+    
+    Returns:
+        HTML content as string, or None if all retries failed
+    """
     for i in range(max_retries):
         try:
-            r = requests.get(url, headers=UA, timeout=30)
+            r = requests.get(url, headers=UA, timeout=timeout)
             if r.ok:
                 return r.text
-        except Exception:
-            pass
-        time.sleep(sleep_base * (2 ** i))
+            else:
+                logger.warning(f"HTTP {r.status_code} for {url} (attempt {i+1}/{max_retries})")
+        except requests.exceptions.Timeout:
+            logger.warning(f"Timeout for {url} (attempt {i+1}/{max_retries})")
+        except requests.exceptions.RequestException as e:
+            logger.warning(f"Request error for {url}: {e} (attempt {i+1}/{max_retries})")
+        except Exception as e:
+            logger.error(f"Unexpected error fetching {url}: {e} (attempt {i+1}/{max_retries})")
+        
+        if i < max_retries - 1:  # Don't sleep after last attempt
+            sleep_time = sleep_base * (2 ** i)
+            logger.debug(f"Retrying in {sleep_time:.2f} seconds...")
+            time.sleep(sleep_time)
+    
+    logger.error(f"Failed to fetch {url} after {max_retries} attempts")
     return None
 
 # ========= Schema normalization =========
@@ -366,24 +422,62 @@ def load_filings_in_range(cik: str, company_key: str, start: str, end: str) -> p
 
 # ========= Text, prices, labeling =========
 def fetch_text(url: str) -> str:
+    """
+    Fetch and extract text content from a URL.
+    
+    Args:
+        url: URL to fetch text from
+    
+    Returns:
+        Extracted text content, or empty string on error
+    """
     try:
         r = requests.get(url, headers=UA, timeout=30)
-        if not r.ok: return ""
+        if not r.ok:
+            logger.warning(f"HTTP {r.status_code} when fetching text from {url}")
+            return ""
+        
         soup = BeautifulSoup(r.text, "lxml")
-        for tag in soup(["script","style","noscript"]): tag.extract()
+        for tag in soup(["script","style","noscript"]): 
+            tag.extract()
+        
         text = soup.get_text("\n")
         text = re.sub(r"\n{2,}", "\n", text)
         text = re.sub(r"[ \t]{2,}", " ", text)
         return text.strip()
-    except Exception:
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Request error fetching text from {url}: {e}")
+        return ""
+    except Exception as e:
+        logger.error(f"Unexpected error extracting text from {url}: {e}")
         return ""
 
 def fetch_prices(ticker: str, start: str, end: str) -> pd.DataFrame:
-    df = yf.download(ticker, start=start, end=end, auto_adjust=True, progress=False)
-    if df.empty: return pd.DataFrame()
-    df = df.reset_index().rename(columns={"Date":"date"})
-    df["date"] = pd.to_datetime(df["date"])
-    return df[["date","Open","High","Low","Close","Volume"]]
+    """
+    Fetch stock price data from Yahoo Finance.
+    
+    Args:
+        ticker: Stock ticker symbol
+        start: Start date (YYYY-MM-DD)
+        end: End date (YYYY-MM-DD)
+    
+    Returns:
+        DataFrame with price data, or empty DataFrame on error
+    """
+    try:
+        df = yf.download(ticker, start=start, end=end, auto_adjust=True, progress=False)
+        if df.empty:
+            logger.warning(f"No price data found for {ticker} from {start} to {end}")
+            return pd.DataFrame()
+        
+        df = df.reset_index().rename(columns={"Date":"date"})
+        df["date"] = pd.to_datetime(df["date"])
+        
+        logger.info(f"Fetched {len(df)} price records for {ticker}")
+        return df[["date","Open","High","Low","Close","Volume"]]
+    except Exception as e:
+        logger.error(f"Error fetching prices for {ticker}: {e}")
+        return pd.DataFrame()
 
 def first_on_or_after(prices: pd.DataFrame, dt0: pd.Timestamp):
     sub = prices[prices["date"] >= dt0]
