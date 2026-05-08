@@ -1,12 +1,15 @@
 # Article scraper - scrapes forbes articles for article title, author, publication date, and content
 
 # Imports
+import logging
 import requests
 from bs4 import BeautifulSoup
 import pandas as pd
 import re
 import time
 import random
+
+logger = logging.getLogger(__name__)
 
 # Get critical elements from article webpage
 def scrape(url, wait_times=[1,5,30], printErrors = True):
@@ -26,9 +29,9 @@ def scrape(url, wait_times=[1,5,30], printErrors = True):
       completed = True
 
     # Print html and wait a bit if there's an error
-    except:
+    except Exception as e:
       errors += 1
-      print(f"({errors}) Scraping error")
+      logger.exception(f"({errors}) Scraping error")
       if(printErrors): print(soup.prettify())
       completed = False
       if(len(wait_times) > 1): time.sleep(wait_times[errors])

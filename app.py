@@ -3,6 +3,7 @@
 Simple web interface for predicting stock movement based on text sentiment.
 """
 
+import logging
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -19,6 +20,8 @@ import time
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
 from ensemble_sentiment_analysis import analyze_sentiment, analyze_sentiment_batch
+
+logger = logging.getLogger(__name__)
 
 # Page configuration
 st.set_page_config(
@@ -171,7 +174,7 @@ def fetch_rss_articles(feed_urls, target_companies, max_articles=20):
                         break
             
         except Exception as e:
-            # Silently continue on errors (feeds may be unavailable)
+            logger.warning("RSS feed %s failed: %s", feed_url, e)
             continue
     
     return articles
@@ -305,6 +308,7 @@ if analysis_mode == "Auto-Fetch Articles":
                                         if len(all_articles) >= max_articles:
                                             break
                         except Exception as e:
+                            logger.warning("RSS feed %s failed: %s", feed_url, e)
                             continue
                     
                     if all_articles:
