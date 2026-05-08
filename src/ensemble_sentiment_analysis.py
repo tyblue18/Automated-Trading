@@ -147,8 +147,8 @@ Voting Ensemble
 """
 def analyze_sentiment(text: str) -> str:
     """
-    Analyze sentiment using ensemble of VADER and FinBERT.
-    VADER breaks ties if models disagree.
+    Analyze sentiment using a voting ensemble of VADER, FinBERT, and
+    TF-IDF + Logistic Regression. Majority wins. VADER breaks ties.
     """
     if not text or not text.strip():
         return "NEUTRAL"
@@ -285,7 +285,8 @@ def analyze_sentiment_batch(texts: List[str], batch_size: int = 8) -> List[str]:
             for text_item in batch:
                 try:
                     results.append(analyze_sentiment(text_item))
-                except:
+                except Exception as e:
+                    logger.warning("Fallback also failed for item (returning NEUTRAL): %s", e)
                     results.append("NEUTRAL")
     
     return results
