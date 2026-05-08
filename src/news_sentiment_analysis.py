@@ -15,18 +15,19 @@ from datetime import datetime
 import os
 from colorama import init, Fore, Style
 
+from config import get_config
 from ensemble_sentiment_analysis import analyze_sentiment
 from google import genai
 
 logger = logging.getLogger(__name__)
 
-FEED_URLS = [
-    "https://www.forbes.com/investing/feed/",
-    "https://www.forbes.com/innovation/feed/",
-    "https://www.forbes.com/money/feed/",
-    "https://www.forbes.com/business/feed/",
-    "./testfeed.xml"
-]
+_cfg = get_config()
+_news = _cfg["news"]
+_tc = _cfg["target_company"]
+
+FEED_URLS = _news["feed_urls"] + (["./testfeed.xml"] if _news.get("include_dev_feeds") else [])
+CHECK_INTERVAL = _news["check_interval_seconds"]
+_ALIASES = [a.lower() for a in _tc["aliases"]]
 
 init(autoreset=True)
 def print_colored_sentiment(sentiment):
@@ -40,8 +41,7 @@ def print_colored_sentiment(sentiment):
     print(f"[{color_map[sentiment]}{sentiment}{Style.RESET_ALL}]", end="")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CSV_FILE = os.path.join(BASE_DIR, "../data/nvidia_articles.csv")
-CHECK_INTERVAL = 600 # check feeds every 10 minutes
+CSV_FILE = os.path.join(BASE_DIR, "..", _cfg["output"]["articles_csv"])
 
 seen_links = set()
 
@@ -95,7 +95,8 @@ def check_for_new_articles():
                 published_csv = now.strftime("%Y-%m-%d")
                 published_pretty = now.strftime("[%Y-%m-%d %a %H:%M]")
 
-            if "nvidia" in title.lower() or "nvidia" in summary.lower():
+            text_lower = (title + " " + summary).lower()
+            if any(alias in text_lower for alias in _ALIASES):
                 if link not in seen_links:
                     seen_links.add(link)
 

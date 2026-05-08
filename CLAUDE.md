@@ -24,7 +24,7 @@ Primary tickers tracked: **NVDA, AMD, TSM**.
 | `src/article_finder.py` | One-shot script — Google News search for Forbes NVIDIA articles by year, outputs `forbes_search.csv` |
 | `src/tfidf_lr_model.py` | Trains the TF-IDF + Logistic Regression classifier and saves `src/tfidf_lr_model.pkl` |
 | `src/test_ensemble_accuracy.py` | Evaluates ensemble accuracy against the FinancialPhraseBank dataset |
-| `src/config_loader.py` | Loads `config.yaml` into a dict for other modules |
+| `src/config.py` | Cached config loader — `get_config()` returns the parsed `config.yaml` dict (`lru_cache`, read once per process) |
 | `src/merge_data.py` | Utility — merges multiple labeled CSV sources |
 | `src/LLM_proc.py` | Experimental LLM processing helper (incomplete) |
 | `config.yaml` | Central config: tickers, EDGAR dates, RSS feeds, VADER thresholds, model paths, logging |
@@ -130,9 +130,7 @@ New functions should annotate parameters and return types.
 **No bare `except` clauses.**
 Use `except Exception as e:` at minimum. Bare `except:` catches `KeyboardInterrupt` and
 `SystemExit`. Current violations:
-- `src/article_scraper.py:29` — bare `except:`
 - `src/ensemble_sentiment_analysis.py:288` — bare `except:` inside `analyze_sentiment_batch`
-- `app.py:143,156,158` — bare `except:` inside `fetch_rss_articles`
 
 **Read config.yaml instead of hardcoding constants.**
 `pipeline_edgar.py` duplicates many values already in `config.yaml` as module-level constants.
@@ -160,6 +158,18 @@ Streamlit frontend, which only calls `analyze_sentiment()` / `analyze_sentiment_
 `pipeline_edgar.py` line 40 hardcodes `"contact: you@example.com"` in the `User-Agent` header
 sent to SEC APIs. This should be updated to a real contact address before production use.
 
-**`config.yaml` `rss.target_companies`:**
-Set to `["nvidia"]` only. The Streamlit frontend has its own independent company list and
-alias map hardcoded in `app.py` (lines 86–95). These two lists are not shared.
+**`config.yaml` `target_company`:**
+`news_sentiment_analysis.py` reads `target_company.aliases` for its RSS filter. The Streamlit
+frontend has its own independent company list and alias map hardcoded in `app.py` (lines 86–95).
+These two are still not shared.
+
+---
+
+## Known issues / future work
+
+**Labeling scheme in `pipeline_edgar.py`:**
+The `label_with_returns()` function uses a binary `ret > 0` split — every filing is labeled
+either UP or DOWN, no NEUTRAL class. The original audit referenced a `k=0.35` volatility
+threshold that does not exist in the code. Worth revisiting the labeling scheme separately —
+three-class labels (UP / DOWN / NEUTRAL) with a volatility-aware threshold would likely
+improve training signal, but that is a modeling decision, not a config swap.

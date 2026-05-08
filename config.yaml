@@ -98,17 +98,6 @@ data:
     sleep_sec: 1.0
     retries: 4
     timeout: 30
-  
-  # RSS Feed Settings
-  rss:
-    feeds:
-      - "https://www.forbes.com/investing/feed/"
-      - "https://www.forbes.com/innovation/feed/"
-      - "https://www.forbes.com/money/feed/"
-      - "https://www.forbes.com/business/feed/"
-    
-    check_interval_seconds: 600  # 10 minutes
-    target_companies: ["nvidia"]  # Case-insensitive
 
 # Sentiment Analysis Settings
 sentiment:
@@ -144,4 +133,31 @@ performance:
   edgar_text_fetch_delay: 0.5
   edgar_chunk_delay: 0.2
   gdelt_query_delay: 1.0
+
+# Target company for RSS monitoring and article search.
+# name is used for queries; aliases are matched case-insensitively in article
+# titles and summaries.
+target_company:
+  name: "nvidia"
+  aliases:
+    - "nvidia"
+    - "nvda"
+
+# RSS news monitor (src/news_sentiment_analysis.py)
+news:
+  feed_urls:
+    - "https://www.forbes.com/investing/feed/"
+    - "https://www.forbes.com/innovation/feed/"
+    - "https://www.forbes.com/money/feed/"
+    - "https://www.forbes.com/business/feed/"
+  include_dev_feeds: false  # set true locally to append ./testfeed.xml
+  check_interval_seconds: 600  # 10 minutes
+
+# Article link finder (src/article_finder.py)
+article_search:
+  query_template: "allintitle:{company} site:forbes.com"
+
+# Output file paths (relative to project root)
+output:
+  articles_csv: "data/nvidia_articles.csv"
 

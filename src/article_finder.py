@@ -7,6 +7,8 @@ import pandas as pd
 import re
 import time
 
+from config import get_config
+
 # Find first occurance of a char in a string
 def find_first(s, c):
   for i in range(len(s)):
@@ -62,12 +64,17 @@ def full_search(searchString, year):
       return extracted_links
     time.sleep(1)
 
+_cfg = get_config()
+_SEARCH_QUERY = _cfg["article_search"]["query_template"].format(
+    company=_cfg["target_company"]["name"]
+)
+
 # Iterate over years to find articles
 year = 2025
 links = []
 
 while True:
-  new_links = full_search("allintitle:nvidia site:forbes.com", year)
+  new_links = full_search(_SEARCH_QUERY, year)
   if len(new_links) > 0: # Add links to list and move on to previous year
     links.extend(new_links)
     year -= 1
