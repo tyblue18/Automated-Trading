@@ -5,19 +5,20 @@ summary. Logs date, title, and body of relevant articles to CSV.
 Expandable for multiple feeds and domains.
 """
 
+import logging
 import feedparser
 import requests
 from bs4 import BeautifulSoup
 import csv
 import time
 from datetime import datetime
-from urllib.parse import urlparse
 import os
 from colorama import init, Fore, Style
 
 from ensemble_sentiment_analysis import analyze_sentiment
 from google import genai
-from google.genai import types
+
+logger = logging.getLogger(__name__)
 
 FEED_URLS = [
     "https://www.forbes.com/investing/feed/",
@@ -133,7 +134,11 @@ def gemini_analysis(ARTICLE_TITLE, ARTICLE_BODY, SCORE):
         model="gemini-2.5-flash", 
         contents= prompt ) 
 
-    return response.text
+    result = response.text.strip()
+    if result not in {"UP", "DOWN", "NEUTRAL"}:
+        logger.warning("Gemini returned unexpected label %r; falling back to ensemble vote %r", result, SCORE)
+        return SCORE
+    return result
 
 
 def main():
