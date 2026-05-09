@@ -1,9 +1,12 @@
 # src/pipeline_gdelt.py
+import logging
 import os, io, re, time, requests
 import pandas as pd
 import yfinance as yf
 from datetime import timedelta
 from urllib.parse import quote_plus
+
+logger = logging.getLogger(__name__)
 
 OUT_DIR = "data"; os.makedirs(OUT_DIR, exist_ok=True)
 
@@ -149,32 +152,34 @@ def label_with_returns(news, prices, horizons=(3,5)):
     return out
 
 if __name__=="__main__":
+    from config import configure_cli_logging
+    configure_cli_logging()
     # 2-month smoke test
-    print("🔎 GDELT smoke test: NVDA 2014-01..02")
+    logger.info("GDELT smoke test: NVDA 2014-01..02")
     news = fetch_news_for_ticker("NVDA","2014-01-01","2014-02-28")
     prices = fetch_prices("NVDA","2013-12-01","2014-03-31")
     labeled = label_with_returns(news, prices, HORIZONS)
-    print(f"news={len(news)}, labeled={len(labeled)}")
+    logger.info("news=%d, labeled=%d", len(news), len(labeled))
     if not labeled.empty:
         labeled.head(20).to_csv(os.path.join(OUT_DIR,"NVDA_2014_01_02_gdelt_sample.csv"), index=False)
-        print("✅ wrote data/NVDA_2014_01_02_gdelt_sample.csv")
+        logger.info("Wrote data/NVDA_2014_01_02_gdelt_sample.csv")
     if not RUN_FULL:
-        print("\n➡️ Full crawl OFF (set RUN_FULL=True in this file)\n"); raise SystemExit(0)
+        logger.info("Full crawl OFF (set RUN_FULL=True to run)"); raise SystemExit(0)
 
     all_frames=[]
     for tkr in COMPANY_ALIASES.keys():
-        print(f"\n=== {tkr} GDELT {NEWS_START}..{NEWS_END} ===")
+        logger.info("=== %s GDELT %s..%s ===", tkr, NEWS_START, NEWS_END)
         n = fetch_news_for_ticker(tkr, NEWS_START, NEWS_END)
         p = fetch_prices(tkr, PRICE_START, PRICE_END)
-        print("news rows:", len(n), "price rows:", len(p))
+        logger.info("news rows: %d, price rows: %d", len(n), len(p))
         if n.empty or p.empty:
-            print("[skip] insufficient data for", tkr); continue
-        lab = label_with_returns(n,p,HORIZONS); print("labeled rows:", len(lab))
+            logger.warning("Skipping %s — insufficient data", tkr); continue
+        lab = label_with_returns(n,p,HORIZONS); logger.info("labeled rows: %d", len(lab))
         lab.to_csv(os.path.join(OUT_DIR,f"{tkr}_gdelt_labeled.csv"), index=False)
         all_frames.append(lab)
     if all_frames:
         pd.concat(all_frames, ignore_index=True).sort_values(["ticker","date"]).to_csv(os.path.join(OUT_DIR,"all_gdelt_labeled.csv"), index=False)
-        print("\n✅ GDELT combined written to data/all_gdelt_labeled.csv")
+        logger.info("GDELT combined written to data/all_gdelt_labeled.csv")
     else:
-        print("\n⚠️ GDELT produced no labeled data — broaden terms or try later.")
+        logger.warning("GDELT produced no labeled data — broaden terms or try later")
 

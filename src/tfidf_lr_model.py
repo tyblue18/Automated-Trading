@@ -15,6 +15,12 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.multiclass import OneVsRestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, classification_report
+import logging
+
+from config import configure_cli_logging
+
+logger = logging.getLogger(__name__)
+configure_cli_logging()
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ARTICLES_CSV = os.path.join(BASE_DIR, "../data/forbes_articles_738.csv")
@@ -108,8 +114,8 @@ model.fit(X_train, y_train)
 
 y_pred =  model.predict(X_test)
 
-print("\nAccuracy:", accuracy_score(y_test, y_pred))
-print("\nClassification Report:\n", classification_report(y_test, y_pred))
+logger.info("Accuracy: %s", accuracy_score(y_test, y_pred))
+logger.info("Classification Report:\n%s", classification_report(y_test, y_pred))
 
 # Save model
 with open(MODEL_SAVE_PATH, "wb") as f:
@@ -118,4 +124,4 @@ with open(MODEL_SAVE_PATH, "wb") as f:
         "model": model
     }, f)
 
-print("\nTF-IDF + Logistic Regression model saved to:", MODEL_SAVE_PATH)
+logger.info("TF-IDF + Logistic Regression model saved to: %s", MODEL_SAVE_PATH)

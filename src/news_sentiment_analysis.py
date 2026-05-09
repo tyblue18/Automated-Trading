@@ -6,7 +6,6 @@ Expandable for multiple feeds and domains.
 """
 
 import logging
-import feedparser
 import requests
 from bs4 import BeautifulSoup
 import csv
@@ -18,6 +17,7 @@ from colorama import init, Fore, Style
 from config import get_config
 from ensemble_sentiment_analysis import analyze_sentiment
 from google import genai
+from retry import fetch_feed
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +28,7 @@ _tc = _cfg["target_company"]
 FEED_URLS = _news["feed_urls"] + (["./testfeed.xml"] if _news.get("include_dev_feeds") else [])
 CHECK_INTERVAL = _news["check_interval_seconds"]
 _ALIASES = [a.lower() for a in _tc["aliases"]]
+_retry = _news["retry"]
 
 init(autoreset=True)
 def print_colored_sentiment(sentiment):
@@ -55,7 +56,7 @@ def get_article_text_generic(url):
         body_text = " ".join(p.get_text() for p in paragraphs)
         return body_text.strip()
     except Exception as e:
-        print(f"Error fetching article text: {e}")
+        logger.error("Error fetching article text: %s", e)
         return ""
 
 def get_article_text(url):
@@ -75,7 +76,8 @@ def check_for_new_articles():
     global seen_links
 
     for feed_url in FEED_URLS:
-        feed = feedparser.parse(feed_url)
+        feed = fetch_feed(feed_url, max_retries=_retry["max_retries"],
+                          base_backoff=_retry["base_backoff"])
 
         for entry in feed.entries:
             title = getattr(entry, "title", "").strip()
@@ -152,6 +154,8 @@ def main():
 
 
 if __name__ == "__main__":
+    from config import configure_cli_logging
+    configure_cli_logging()
     main()
 
 

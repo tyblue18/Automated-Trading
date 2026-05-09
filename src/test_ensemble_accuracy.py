@@ -7,7 +7,13 @@ import numpy as np
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from tqdm import tqdm
 
+import logging
+
+from config import configure_cli_logging
 from ensemble_sentiment_analysis import analyze_sentiment, labels
+
+logger = logging.getLogger(__name__)
+configure_cli_logging()
 
 df = pd.read_csv("../data/sentiment_analysis_for_financial_news.csv")
 
@@ -29,7 +35,7 @@ df = df.dropna(subset=["mapped_label"])
 y_true = []
 y_pred = []
 
-print(f"\nEvaluating {len(df)} samples...\n")
+logger.info("Evaluating %d samples...", len(df))
 
 for _, row in tqdm(df.iterrows(), total=len(df)):
     text = row["phrase"]
@@ -45,8 +51,6 @@ report = classification_report(y_true, y_pred, labels=labels)
 cm = confusion_matrix(y_true, y_pred, labels=labels)
 
 # Output
-print("Accuracy:", accuracy)
-print("\nClassification Report:\n")
-print(report)
-print("\nConfusion Matrix (rows=true, cols=pred):\n")
-print(pd.DataFrame(cm, index=labels, columns=labels))
+logger.info("Accuracy: %s", accuracy)
+logger.info("Classification Report:\n%s", report)
+logger.info("Confusion Matrix (rows=true, cols=pred):\n%s", pd.DataFrame(cm, index=labels, columns=labels))

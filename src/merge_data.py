@@ -12,9 +12,12 @@ Missing columns are filled with sensible defaults.
 """
 
 import glob
+import logging
 import os
 import sys
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 DATA_DIR = "data"
 OUT_FILE = os.path.join(DATA_DIR, "all_sources_labeled.csv")
@@ -82,12 +85,12 @@ def coerce_cols(df: pd.DataFrame, source_name: str) -> pd.DataFrame:
 def main():
     paths = sorted(glob.glob(os.path.join(DATA_DIR, "*_labeled.csv")))
     if not paths:
-        print("No *_labeled.csv files found in data/. Nothing to merge.")
+        logger.warning("No *_labeled.csv files found in data/. Nothing to merge.")
         sys.exit(0)
 
-    print("Merging the following files:")
+    logger.info("Merging the following files:")
     for p in paths:
-        print("  -", os.path.basename(p))
+        logger.info("  - %s", os.path.basename(p))
 
     frames = []
     for p in paths:
@@ -95,12 +98,12 @@ def main():
         try:
             df = pd.read_csv(p)
         except Exception as e:
-            print(f"  ! Skipping {p}: {e}")
+            logger.warning("Skipping %s: %s", p, e)
             continue
         frames.append(coerce_cols(df, source_name=src))
 
     if not frames:
-        print("No valid files to merge after parsing.")
+        logger.warning("No valid files to merge after parsing.")
         sys.exit(0)
 
     all_df = pd.concat(frames, ignore_index=True)
@@ -114,15 +117,17 @@ def main():
 
     # Quick summary
     by_src = all_df["source"].value_counts()
-    print("\nRows by source:\n", by_src.to_string())
-    print("\nLabel balance (3d):\n", all_df["label_3d"].value_counts(dropna=False).to_string())
-    print("\nDate range:", all_df["date"].min(), "→", all_df["date"].max())
+    logger.info("Rows by source:\n%s", by_src.to_string())
+    logger.info("Label balance (3d):\n%s", all_df["label_3d"].value_counts(dropna=False).to_string())
+    logger.info("Date range: %s → %s", all_df["date"].min(), all_df["date"].max())
 
     # Write
     os.makedirs(DATA_DIR, exist_ok=True)
     all_df.to_csv(OUT_FILE, index=False)
-    print(f"\n✅ Wrote {len(all_df):,} rows to {OUT_FILE}")
+    logger.info("Wrote %s rows to %s", f"{len(all_df):,}", OUT_FILE)
 
 if __name__ == "__main__":
+    from config import configure_cli_logging
+    configure_cli_logging()
     main()
 

@@ -1,13 +1,17 @@
 # Article finder - scrapes google to find articles about a specified topic from a specified source, stops when a year has no articles
 
 # Imports
+import logging
 import requests
 from bs4 import BeautifulSoup
 import pandas as pd
 import re
 import time
 
-from config import get_config
+from config import get_config, configure_cli_logging
+
+logger = logging.getLogger(__name__)
+configure_cli_logging()
 
 # Find first occurance of a char in a string
 def find_first(s, c):
@@ -25,7 +29,7 @@ def buildSearch(searchString, year, pageNum=0):
 
 # Iterate over multiple google search pages
 def full_search(searchString, year):
-  print(f"Searching in year {year}...")
+  logger.info("Searching in year %d...", year)
   extracted_links = []
   max_search = 99
 
@@ -41,8 +45,8 @@ def full_search(searchString, year):
     # Check to make sure request isn't blocked by CAPTCHA
     is_bad_response = re.match(r'<!DOCTYPE [^>]+>', raw)
     if is_bad_response:
-      print("BAD HTML RESPONSE - POSSIBLE CAPTCHA BLOCK")
-      print(soup.prettify())
+      logger.warning("Bad HTML response — possible CAPTCHA block")
+      logger.debug("%s", soup.prettify())
       break;
 
     # Find all elements containing Forbes news article links
@@ -57,10 +61,10 @@ def full_search(searchString, year):
             extracted_links.append(href)
 
     # Print status
-    print(f"Extracted {len(links)} links from search page {i+1}")
+    logger.debug("Extracted %d links from search page %d", len(links), i + 1)
     if len(links) == 0:
-      print(f"Page runout - ending search for year {year}")
-      print(f"Found {len(extracted_links)} for year {year}")
+      logger.info("Page runout — ending search for year %d", year)
+      logger.info("Found %d links for year %d", len(extracted_links), year)
       return extracted_links
     time.sleep(1)
 
@@ -79,7 +83,7 @@ while True:
     links.extend(new_links)
     year -= 1
   else: # End search if there are no articles found for the year
-    print(f"Year runout - ending search")
+    logger.info("Year runout — ending search")
     break
 
 # # Find and remove duplicates
@@ -90,9 +94,9 @@ while True:
 # Print results
 for link_data in links:
   # print(link_data['text'])
-  print("" + str(link_data))
+  logger.debug("%s", link_data)
   # print("")
-print(f"Found {len(links)} links")
+logger.info("Found %d links total", len(links))
 
 # Export links as CSV
 df_final = pd.DataFrame(links, columns=['Link'])

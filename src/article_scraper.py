@@ -9,10 +9,13 @@ import re
 import time
 import random
 
+from config import configure_cli_logging
+
 logger = logging.getLogger(__name__)
+configure_cli_logging()
 
 # Get critical elements from article webpage
-def scrape(url, wait_times=[1,5,30], printErrors = True):
+def scrape(url, wait_times=[1,5,30]):
   # Run until scrape is successful
   completed = False
   errors = 0
@@ -32,14 +35,14 @@ def scrape(url, wait_times=[1,5,30], printErrors = True):
     except Exception as e:
       errors += 1
       logger.exception(f"({errors}) Scraping error")
-      if(printErrors): print(soup.prettify())
+      logger.debug("%s", soup.prettify())
       completed = False
       if(len(wait_times) > 1): time.sleep(wait_times[errors])
       else: time.sleep(wait_times[0])
 
       # Skip article if the article cannot be scraped
       if errors >= len(wait_times)-1:
-        print("(!) Skipping article...")
+        logger.warning("Skipping article after %d errors", errors)
         return "0", "0", "0", "0"
 
   time.sleep(wait_times[0])
@@ -57,20 +60,20 @@ passNum = 1
 while(True):
   for i in range(numLinks):
     if data[i][0] == "0":
-      print(f"Scraping article {i+1} of {numLinks}")
+      logger.debug("Scraping article %d of %d", i + 1, numLinks)
       dataAquired = False
-      data[i] = scrape(links[i], [random.uniform(1,3)], False)
+      data[i] = scrape(links[i], [random.uniform(1,3)])
 
   # Post-pass
   passNum += 1
   aquired = 0
   for i in range(numLinks):
     if data[i][0] != "0": aquired += 1
-  print(f"Scraped {aquired} out of {numLinks} articles")
+  logger.info("Scraped %d / %d articles", aquired, numLinks)
   if aquired == numLinks: break
-  print(f"Waiting before starting pass {passNum}...")
+  logger.info("Waiting before starting pass %d...", passNum)
   time.sleep(5)
-print("Scraping Complete")
+logger.info("Scraping complete")
 
 # Export data as CSV
 df_final = pd.DataFrame(data, columns=['Title', 'Time', 'Author', 'Body'])

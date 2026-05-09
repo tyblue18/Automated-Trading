@@ -323,7 +323,7 @@ def _scrape_company_filings_html(cik: str, start: str, end: str, base_forms=BASE
     df = df.dropna(subset=["filingDate"])
     df = df[df["filingDate"].between(start, end)]
     df = df.drop_duplicates(subset=["doc_url"]).reset_index(drop=True)
-    print(f"  [html-scraper] rows: {len(df)}")
+    logger.info("[html-scraper] rows: %d", len(df))
     return df
 
 # ========= Master loader =========
@@ -353,7 +353,7 @@ def load_filings_in_range(cik: str, company_key: str, start: str, end: str) -> p
     df = pd.concat(frames, ignore_index=True, sort=False) if frames else pd.DataFrame()
     if df.empty:
         # 3) if still empty before normalization, scrape HTML
-        print("  (no rows from submissions/search-index — scraping classic EDGAR)")
+        logger.info("No rows from submissions/search-index — scraping classic EDGAR")
         html_df = _scrape_company_filings_html(cik, start, end, base_forms=BASE_FORMS)
         df = html_df if not html_df.empty else pd.DataFrame()
 
@@ -365,15 +365,15 @@ def load_filings_in_range(cik: str, company_key: str, start: str, end: str) -> p
     # Coalesced window date, and apply target window
     df["window_date"] = _coalesce_datetime(df, ["filingDate","filed","dateFiled","reportDate","accepted"])
     df = df[~df["window_date"].isna()].copy()
-    print(f"  rows before windowing: {len(df)}")
-    print(f"  date span (min → max): {df['window_date'].min()} → {df['window_date'].max()}")
+    logger.debug("rows before windowing: %d", len(df))
+    logger.debug("date span: %s → %s", df['window_date'].min(), df['window_date'].max())
 
     df = df[df["window_date"].between(START, END)].copy()
-    print(f"  rows after windowing: {len(df)}")
+    logger.info("rows after windowing: %d", len(df))
 
     # If window still empty, scrape HTML as a fallback and union
     if df.empty:
-        print("  (window empty — pulling HTML fallback for target years)")
+        logger.warning("Window empty — pulling HTML fallback for target years")
         html_df = _scrape_company_filings_html(cik, start, end, base_forms=BASE_FORMS)
         if not html_df.empty:
             html_df = _normalize_schema(html_df)
@@ -381,20 +381,20 @@ def load_filings_in_range(cik: str, company_key: str, start: str, end: str) -> p
             html_df = html_df[~html_df["window_date"].isna()]
             html_df = html_df[html_df["window_date"].between(START, END)]
             df = html_df.copy()
-            print(f"  rows after HTML fallback: {len(df)}")
+            logger.info("rows after HTML fallback: %d", len(df))
 
     if df.empty:
         return df
 
     # Debug forms before base-filter
     pre_counts = df["form"].value_counts().sort_index()
-    print("  pre-filter (raw) form counts:", ", ".join(f"{k}:{v}" for k,v in pre_counts.items()) if not pre_counts.empty else "(none)")
+    logger.debug("pre-filter form counts: %s", ", ".join(f"{k}:{v}" for k,v in pre_counts.items()) if not pre_counts.empty else "(none)")
 
     # Base-form filter
     df["form_base"] = df["form"].astype(str).map(_base_form)
     df = df[df["form_base"].isin(BASE_FORMS)]
     if df.empty:
-        print("  after base-form filtering: 0")
+        logger.warning("After base-form filtering: 0 rows remain")
         return df
 
     # Ensure doc_url exists or build safely
@@ -417,7 +417,7 @@ def load_filings_in_range(cik: str, company_key: str, start: str, end: str) -> p
 
     counts_raw  = df["form"].value_counts().sort_index().to_dict()
     counts_base = df["form_base"].value_counts().sort_index().to_dict()
-    print("  loaded filings:", len(df), "| by raw form:", counts_raw, " | by base form:", counts_base)
+    logger.info("Loaded filings: %d | by raw form: %s | by base form: %s", len(df), counts_raw, counts_base)
     return df
 
 # ========= Text, prices, labeling =========
@@ -513,13 +513,15 @@ def label_with_returns(rows: pd.DataFrame, prices: pd.DataFrame, horizons=(3,5))
 
 # ========= Main =========
 if __name__ == "__main__":
+    from config import configure_cli_logging
+    configure_cli_logging()
     all_frames = []
 
     for tkr, cik in TICKER_CIK.items():
-        print(f"\n=== {tkr} EDGAR {START}..{END} ===")
+        logger.info("=== %s EDGAR %s..%s ===", tkr, START, END)
         filings = load_filings_in_range(cik, company_key=tkr, start=START, end=END)
         if filings.empty:
-            print("  (no filings after loaders)")
+            logger.warning("No filings found after loaders for %s", tkr)
             continue
 
         # Fetch text (polite & capped)
@@ -534,13 +536,13 @@ if __name__ == "__main__":
         # Prices + labels
         prices = fetch_prices(tkr, PRICE_START, PRICE_END)
         if prices.empty:
-            print("  (no prices)")
+            logger.warning("No price data for %s", tkr)
             continue
 
         labeled = label_with_returns(filings, prices, HORIZONS)
         labeled["snippet"] = [(filings.iloc[i]["text"] or "")[:2000] for i in range(len(labeled))]
         labeled.insert(0, "ticker", tkr)
-        print("  labeled rows:", len(labeled))
+        logger.info("Labeled rows: %d", len(labeled))
 
         if not labeled.empty:
             out_path = os.path.join(OUT_DIR, f"{tkr}_edgar_labeled.csv")
@@ -551,7 +553,7 @@ if __name__ == "__main__":
         pd.concat(all_frames, ignore_index=True)\
           .sort_values(["ticker","date"])\
           .to_csv(os.path.join(OUT_DIR, "all_edgar_labeled.csv"), index=False)
-        print("\n✅ EDGAR combined written to data/all_edgar_labeled.csv")
+        logger.info("EDGAR combined written to data/all_edgar_labeled.csv")
     else:
-        print("\n⚠️ EDGAR produced no labeled data — raise MAX_DOCS, add tickers, or extend dates.")
+        logger.warning("EDGAR produced no labeled data — raise MAX_DOCS, add tickers, or extend dates")
 
