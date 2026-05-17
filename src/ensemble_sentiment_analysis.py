@@ -14,7 +14,7 @@ import os
 import logging
 from typing import List, Tuple, Optional
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
+from transformers import AutoTokenizer, AutoModelForSequenceClassification, BertForSequenceClassification, BertTokenizer
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -24,6 +24,9 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_MODEL = os.path.join(BASE_DIR, "tfidf_lr_model.pkl")
 
 labels = ["UP", "DOWN", "NEUTRAL"]
+
+# yiyanghkust/finbert-tone id2label: {0: "Neutral", 1: "Positive", 2: "Negative"}
+FINBERT_LABELS = ["NEUTRAL", "UP", "DOWN"]
 
 # Global model cache for FinBERT (singleton pattern)
 _finbert_model = None
@@ -37,8 +40,8 @@ def get_finbert_model():
     if _finbert_model is None or _finbert_tokenizer is None:
         logger.info("Loading FinBERT model (first time, will be cached)...")
         try:
-            _finbert_model = AutoModelForSequenceClassification.from_pretrained("yiyanghkust/finbert-tone")
-            _finbert_tokenizer = AutoTokenizer.from_pretrained("yiyanghkust/finbert-tone")
+            _finbert_model = BertForSequenceClassification.from_pretrained("yiyanghkust/finbert-tone")
+            _finbert_tokenizer = BertTokenizer.from_pretrained("yiyanghkust/finbert-tone")
             logger.info("FinBERT model loaded successfully")
         except Exception as e:
             logger.error(f"Error loading FinBERT model: {e}")
@@ -82,9 +85,9 @@ def analyze_sentiment_vader(text: str) -> str:
         scores = analyzer.polarity_scores(text)
         polarity = scores["compound"]
 
-        if polarity > 0.05:
+        if polarity > 0.2:
             return "UP"
-        elif polarity < -0.05:
+        elif polarity < -0.2:
             return "DOWN"
         else:
             return "NEUTRAL"
@@ -110,7 +113,7 @@ def analyze_sentiment_finbert(text: str) -> str:
         logits = outputs.logits
         probabilities = torch.softmax(logits, dim=1).numpy()[0]
         max_index = np.argmax(probabilities)
-        sentiment = labels[max_index]
+        sentiment = FINBERT_LABELS[max_index]
 
         return sentiment
     except Exception as e:
@@ -175,9 +178,9 @@ def analyze_sentiment(text: str) -> str:
         max_votes = max(vote_counts.values())
         candidates = [label for label, count in vote_counts.items() if count == max_votes]
 
-        # VADER breaks tie if multiple candidates
+        # FinBERT breaks tie if multiple candidates (domain-trained, more reliable than VADER on financial text)
         if len(candidates) > 1:
-            final_label = vader_vote
+            final_label = finbert_vote
         else:
             final_label = candidates[0]
 
@@ -246,7 +249,7 @@ def analyze_sentiment_batch(texts: List[str], batch_size: int = 8) -> List[str]:
             finbert_votes = []
             for prob in probabilities:
                 max_index = np.argmax(prob)
-                finbert_votes.append(labels[max_index])
+                finbert_votes.append(FINBERT_LABELS[max_index])
             
             # Get VADER and TF-IDF votes for each text
             for idx, text_item in enumerate(valid_batch):
@@ -261,7 +264,7 @@ def analyze_sentiment_batch(texts: List[str], batch_size: int = 8) -> List[str]:
                 candidates = [label for label, count in vote_counts.items() if count == max_votes]
                 
                 if len(candidates) > 1:
-                    final_label = vader_vote
+                    final_label = finbert_vote
                 else:
                     final_label = candidates[0]
                 

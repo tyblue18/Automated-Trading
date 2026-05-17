@@ -55,3 +55,5 @@ output/*.json
 *.temp
 
 .venv/
+
+data/sentiment_analysis_for_financial_news.csv

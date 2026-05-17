@@ -120,6 +120,7 @@ Automated-Trading/
 │   ├── pipeline_gdelt.py               # GDELT news pipeline
 │   ├── article_finder.py               # Google News link search
 │   ├── article_scraper.py              # Forbes article scraper
+│   ├── merge_data.py                   # Merges labeled CSV datasets
 │   ├── tfidf_lr_model.py               # TF-IDF model trainer
 │   └── test_ensemble_accuracy.py       # Ensemble accuracy evaluation
 ├── notebooks/

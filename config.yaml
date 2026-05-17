@@ -152,6 +152,9 @@ news:
     - "https://www.forbes.com/business/feed/"
   include_dev_feeds: false  # set true locally to append ./testfeed.xml
   check_interval_seconds: 600  # 10 minutes
+  retry:
+    max_retries: 3
+    base_backoff: 1  # seconds; actual delays are 1s, 2s, 4s
 
 # Article link finder (src/article_finder.py)
 article_search:
@@ -160,4 +163,10 @@ article_search:
 # Output file paths (relative to project root)
 output:
   articles_csv: "data/nvidia_articles.csv"
+
+# User-supplied text validation (app.py UI input).
+# FinBERT hard limit is 512 tokens; at ~4 chars/token, 2000 chars is a
+# conservative ceiling that avoids silent truncation mid-token.
+text_input:
+  max_chars: 2000
 

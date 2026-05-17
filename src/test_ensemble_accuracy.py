@@ -15,7 +15,7 @@ from ensemble_sentiment_analysis import analyze_sentiment, labels
 logger = logging.getLogger(__name__)
 configure_cli_logging()
 
-df = pd.read_csv("../data/sentiment_analysis_for_financial_news.csv")
+df = pd.read_csv("../data/sentiment_analysis_for_financial_news.csv", encoding="latin-1")
 
 # Normalize column names
 df.columns = [c.lower().strip() for c in df.columns]

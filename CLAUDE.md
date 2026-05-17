@@ -94,12 +94,6 @@ If adding one, `flake8` or `ruff` are recommended starting points.
 
 ## Known Dead Code
 
-### `finBERT/` subdirectory
-The local `finBERT/` directory is an external repo dropped into the project and **is not used
-anywhere**. The ensemble loads `yiyanghkust/finbert-tone` from HuggingFace at runtime via
-`transformers.AutoModelForSequenceClassification`. The local submodule can be safely ignored
-or deleted.
-
 ### Commented-out deduplication block in `src/article_finder.py` (lines 78–82)
 Dead code left from an earlier refactor.
 

@@ -11,7 +11,6 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import sys
 import os
-import feedparser
 import requests
 from bs4 import BeautifulSoup
 import time
@@ -19,9 +18,29 @@ import time
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
+from config import get_config
 from ensemble_sentiment_analysis import analyze_sentiment, analyze_sentiment_batch
+from retry import fetch_feed
 
 logger = logging.getLogger(__name__)
+
+_cfg = get_config()
+_retry_cfg = _cfg["news"]["retry"]
+
+
+def _prepare_text(text: str) -> tuple[str, bool]:
+    """Strip whitespace and truncate to max_chars on a word boundary.
+
+    Returns (prepared_text, was_truncated).
+    """
+    text = text.strip()
+    max_chars: int = _cfg["text_input"]["max_chars"]
+    if len(text) <= max_chars:
+        return text, False
+    cut = text.rfind(" ", 0, max_chars)
+    if cut == -1:
+        cut = max_chars - 1
+    return text[:cut] + "…", True
 
 # Page configuration
 st.set_page_config(
@@ -106,9 +125,9 @@ def fetch_rss_articles(feed_urls, target_companies, max_articles=20):
     
     for feed_url in feed_urls:
         try:
-            # Add timeout and headers for better compatibility
-            feed = feedparser.parse(feed_url)
-            
+            feed = fetch_feed(feed_url, max_retries=_retry_cfg["max_retries"],
+                              base_backoff=_retry_cfg["base_backoff"])
+
             # Check if feed parsed successfully
             if feed.bozo:
                 # Continue anyway, sometimes feeds have minor parsing issues but still work
@@ -273,7 +292,8 @@ if analysis_mode == "Auto-Fetch Articles":
                     
                     for feed_url in feed_urls[:4]:  # Try multiple feeds
                         try:
-                            feed = feedparser.parse(feed_url)
+                            feed = fetch_feed(feed_url, max_retries=_retry_cfg["max_retries"],
+                                              base_backoff=_retry_cfg["base_backoff"])
                             if feed.entries:
                                 for entry in feed.entries[:10]:
                                     title = getattr(entry, "title", "").strip()
@@ -438,13 +458,16 @@ elif analysis_mode == "Single Text":
         analyze_button = st.button("🔍 Analyze Sentiment", type="primary", use_container_width=True)
     
     if analyze_button:
-        if not text_input or not text_input.strip():
-            st.warning("⚠️ Please enter some text to analyze.")
+        prepared, truncated = _prepare_text(text_input)
+        if not prepared:
+            st.error("⚠️ Please enter some text to analyze.")
         else:
+            if truncated:
+                st.info(f"ℹ️ Input was truncated to {_cfg['text_input']['max_chars']} characters.")
             with st.spinner("🔄 Analyzing sentiment... This may take a few seconds on first run (loading models)..."):
                 try:
                     # Analyze sentiment
-                    sentiment = analyze_sentiment(text_input)
+                    sentiment = analyze_sentiment(prepared)
                     
                     # Display prediction
                     st.markdown("---")
@@ -529,64 +552,80 @@ else:  # Batch Analysis
         if not texts_to_analyze:
             st.warning("⚠️ Please provide texts to analyze.")
         else:
-            with st.spinner(f"🔄 Analyzing {len(texts_to_analyze)} texts... This may take a moment..."):
-                try:
-                    # Batch analyze
-                    results = analyze_sentiment_batch(texts_to_analyze, batch_size=8)
-                    
-                    # Create results dataframe
-                    results_df = pd.DataFrame({
-                        'Text': texts_to_analyze,
-                        'Prediction': results,
-                        'Timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                    })
-                    
-                    # Display results
-                    st.markdown("---")
-                    st.header("📊 Results")
-                    
-                    # Summary statistics
-                    col1, col2, col3, col4 = st.columns(4)
-                    with col1:
-                        st.metric("Total Texts", len(results_df))
-                    with col2:
-                        up_count = (results_df['Prediction'] == 'UP').sum()
-                        st.metric("📈 UP", up_count, delta=f"{up_count/len(results_df)*100:.1f}%")
-                    with col3:
-                        down_count = (results_df['Prediction'] == 'DOWN').sum()
-                        st.metric("📉 DOWN", down_count, delta=f"{down_count/len(results_df)*100:.1f}%")
-                    with col4:
-                        neutral_count = (results_df['Prediction'] == 'NEUTRAL').sum()
-                        st.metric("➡️ NEUTRAL", neutral_count, delta=f"{neutral_count/len(results_df)*100:.1f}%")
-                    
-                    # Visualization
-                    st.subheader("📊 Prediction Distribution")
-                    prediction_counts = results_df['Prediction'].value_counts()
-                    
-                    fig = px.pie(
-                        values=prediction_counts.values,
-                        names=prediction_counts.index,
-                        color_discrete_map={'UP': '#28a745', 'DOWN': '#dc3545', 'NEUTRAL': '#6c757d'},
-                        title="Sentiment Distribution"
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-                    
-                    # Results table
-                    st.subheader("📋 Detailed Results")
-                    st.dataframe(results_df, use_container_width=True, hide_index=True)
-                    
-                    # Download button
-                    csv = results_df.to_csv(index=False)
-                    st.download_button(
-                        label="📥 Download Results as CSV",
-                        data=csv,
-                        file_name=f"sentiment_predictions_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                        mime="text/csv"
-                    )
-                    
-                except Exception as e:
-                    st.error(f"❌ Error analyzing batch: {e}")
-                    st.exception(e)
+            prepared_texts, n_truncated, n_skipped = [], 0, 0
+            for t in texts_to_analyze:
+                p, was_truncated = _prepare_text(t)
+                if not p:
+                    n_skipped += 1
+                    continue
+                prepared_texts.append(p)
+                if was_truncated:
+                    n_truncated += 1
+            if n_skipped:
+                st.info(f"ℹ️ {n_skipped} empty row(s) were skipped.")
+            if n_truncated:
+                st.info(f"ℹ️ {n_truncated} text(s) were truncated to {_cfg['text_input']['max_chars']} characters.")
+            if not prepared_texts:
+                st.warning("⚠️ No valid texts to analyze after filtering.")
+            else:
+                with st.spinner(f"🔄 Analyzing {len(prepared_texts)} texts... This may take a moment..."):
+                    try:
+                        # Batch analyze
+                        results = analyze_sentiment_batch(prepared_texts, batch_size=8)
+
+                        # Create results dataframe
+                        results_df = pd.DataFrame({
+                            'Text': prepared_texts,
+                            'Prediction': results,
+                            'Timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                        })
+
+                        # Display results
+                        st.markdown("---")
+                        st.header("📊 Results")
+
+                        # Summary statistics
+                        col1, col2, col3, col4 = st.columns(4)
+                        with col1:
+                            st.metric("Total Texts", len(results_df))
+                        with col2:
+                            up_count = (results_df['Prediction'] == 'UP').sum()
+                            st.metric("📈 UP", up_count, delta=f"{up_count/len(results_df)*100:.1f}%")
+                        with col3:
+                            down_count = (results_df['Prediction'] == 'DOWN').sum()
+                            st.metric("📉 DOWN", down_count, delta=f"{down_count/len(results_df)*100:.1f}%")
+                        with col4:
+                            neutral_count = (results_df['Prediction'] == 'NEUTRAL').sum()
+                            st.metric("➡️ NEUTRAL", neutral_count, delta=f"{neutral_count/len(results_df)*100:.1f}%")
+
+                        # Visualization
+                        st.subheader("📊 Prediction Distribution")
+                        prediction_counts = results_df['Prediction'].value_counts()
+
+                        fig = px.pie(
+                            values=prediction_counts.values,
+                            names=prediction_counts.index,
+                            color_discrete_map={'UP': '#28a745', 'DOWN': '#dc3545', 'NEUTRAL': '#6c757d'},
+                            title="Sentiment Distribution"
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+
+                        # Results table
+                        st.subheader("📋 Detailed Results")
+                        st.dataframe(results_df, use_container_width=True, hide_index=True)
+
+                        # Download button
+                        csv = results_df.to_csv(index=False)
+                        st.download_button(
+                            label="📥 Download Results as CSV",
+                            data=csv,
+                            file_name=f"sentiment_predictions_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                            mime="text/csv"
+                        )
+
+                    except Exception as e:
+                        st.error(f"❌ Error analyzing batch: {e}")
+                        st.exception(e)
 
 # Footer
 st.markdown("---")
