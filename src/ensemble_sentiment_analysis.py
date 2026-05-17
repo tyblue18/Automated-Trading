@@ -85,9 +85,9 @@ def analyze_sentiment_vader(text: str) -> str:
         scores = analyzer.polarity_scores(text)
         polarity = scores["compound"]
 
-        if polarity > 0.2:
+        if polarity > 0.1:
             return "UP"
-        elif polarity < -0.2:
+        elif polarity < -0.1:
             return "DOWN"
         else:
             return "NEUTRAL"
@@ -164,8 +164,8 @@ def analyze_sentiment(text: str) -> str:
         # Optional: Try to get TF-IDF vote (may be None if model unavailable)
         base_vote = analyze_sentiment_base(text)
         
-        # Build votes list (exclude None values)
-        votes = [v for v in [base_vote, vader_vote, finbert_vote] if v is not None]
+        # FinBERT counts twice — it's the only domain-trained model in the ensemble
+        votes = [v for v in [base_vote, vader_vote, finbert_vote, finbert_vote] if v is not None]
         
         if not votes:
             logger.warning("No valid votes from any model, returning NEUTRAL")
@@ -257,8 +257,8 @@ def analyze_sentiment_batch(texts: List[str], batch_size: int = 8) -> List[str]:
                 finbert_vote = finbert_votes[idx]
                 base_vote = analyze_sentiment_base(text_item)
                 
-                # Ensemble voting
-                votes = [v for v in [base_vote, vader_vote, finbert_vote] if v is not None]
+                # FinBERT counts twice — it's the only domain-trained model in the ensemble
+                votes = [v for v in [base_vote, vader_vote, finbert_vote, finbert_vote] if v is not None]
                 vote_counts = {label: votes.count(label) for label in labels}
                 max_votes = max(vote_counts.values())
                 candidates = [label for label, count in vote_counts.items() if count == max_votes]
